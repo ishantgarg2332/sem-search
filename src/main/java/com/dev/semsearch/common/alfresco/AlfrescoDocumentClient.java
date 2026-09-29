@@ -301,6 +301,89 @@ public class AlfrescoDocumentClient {
         log.info("Deleted node {} (moved to trashcan)", nodeId);
     }
 
+    // ── Folder Creation & Permission Management ──────────────────────────────
+
+    /**
+     * Creates a new folder in Alfresco under the specified parent node.
+     *
+     * @param parentId the parent folder node UUID (use "-root-" for Company Home)
+     * @param name the folder name (e.g. "Public Workspace")
+     * @param title optional title
+     * @param description optional description
+     * @return newly created DocumentNode
+     */
+    public DocumentNode createFolder(String parentId, String name, String title, String description) {
+        Map<String, Object> properties = new java.util.HashMap<>();
+        if (title != null && !title.isBlank()) {
+            properties.put("cm:title", title);
+        }
+        if (description != null && !description.isBlank()) {
+            properties.put("cm:description", description);
+        }
+
+        Map<String, Object> body = new java.util.HashMap<>();
+        body.put("name", name);
+        body.put("nodeType", "cm:folder");
+        if (!properties.isEmpty()) {
+            body.put("properties", properties);
+        }
+
+        AlfrescoEntryResponse response = restClient.post()
+                .uri("/nodes/{parentId}/children", parentId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(body)
+                .retrieve()
+                .body(AlfrescoEntryResponse.class);
+
+        if (response == null || response.entry == null) {
+            throw new IllegalStateException("Alfresco createFolder returned no entry for: " + name);
+        }
+
+        log.info("Created folder '{}' (nodeId={}) under parent={}", name, response.entry.id, parentId);
+        return mapEntry(response.entry);
+    }
+
+    /**
+     * Sets local permissions and inheritance toggle on an Alfresco node.
+     *
+     * @param nodeId the node UUID
+     * @param isInheritanceEnabled whether permissions inherit from parent
+     * @param localPermissions list of authority permissions to set locally
+     * @return updated DocumentNode
+     */
+    public DocumentNode setPermissions(String nodeId, boolean isInheritanceEnabled, List<PermissionSetting> localPermissions) {
+        List<Map<String, String>> locallySet = (localPermissions != null ? localPermissions : List.<PermissionSetting>of()).stream()
+                .map(p -> Map.of(
+                        "authorityId", p.authorityId(),
+                        "name", p.role(),
+                        "accessStatus", p.accessStatus() != null ? p.accessStatus() : "ALLOWED"
+                ))
+                .toList();
+
+        Map<String, Object> permissionsPayload = Map.of(
+                "isInheritanceEnabled", isInheritanceEnabled,
+                "locallySet", locallySet
+        );
+
+        Map<String, Object> body = Map.of("permissions", permissionsPayload);
+
+        AlfrescoEntryResponse response = restClient.put()
+                .uri("/nodes/{nodeId}?include=permissions,path", nodeId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(body)
+                .retrieve()
+                .body(AlfrescoEntryResponse.class);
+
+        if (response == null || response.entry == null) {
+            throw new IllegalStateException("Alfresco setPermissions returned no entry for node: " + nodeId);
+        }
+
+        log.info("Updated permissions on node {} (inherit={}, rules={})", nodeId, isInheritanceEnabled, locallySet.size());
+        return mapEntry(response.entry);
+    }
+
+    public record PermissionSetting(String authorityId, String role, String accessStatus) {}
+
     // ── Internal helpers ─────────────────────────────────────────────────────
 
     private DocumentNode mapEntry(AlfrescoNodeEntry entry) {

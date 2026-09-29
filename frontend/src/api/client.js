@@ -80,24 +80,51 @@ export function isAuthenticated() {
 }
 
 /**
+ * Safely parses JSON response, providing clear error messages when the backend is unreachable or returns non-JSON.
+ */
+async function parseJsonResponse(res, fallbackMessage) {
+  let data = null;
+  const text = await res.text();
+  if (text && text.trim().length > 0) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = null;
+    }
+  }
+
+  if (!res.ok) {
+    if (data && data.error) {
+      throw new Error(data.error);
+    }
+    if (res.status === 504 || res.status === 502 || res.status === 503) {
+      throw new Error('Backend server unreachable. Please ensure the Spring Boot backend is running on port 8085.');
+    }
+    throw new Error(fallbackMessage || `Request failed with status ${res.status}`);
+  }
+
+  if (!data) {
+    throw new Error('Server returned an empty response.');
+  }
+
+  return data;
+}
+
+/**
  * Logs in with username and password against Alfresco via backend.
  * @param {string} username
  * @param {string} password
  * @returns {Promise<object>} user object
  */
-export function login(username, password) {
-  return fetch(`${API_BASE}/auth/login`, {
+export async function login(username, password) {
+  const res = await fetch(`${API_BASE}/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username, password }),
-  }).then(async (res) => {
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data.error || 'Login failed');
-    }
-    setAuth(data.token, data.user);
-    return data.user;
   });
+  const data = await parseJsonResponse(res, 'Invalid credentials');
+  setAuth(data.token, data.user);
+  return data.user;
 }
 
 /**
@@ -105,32 +132,26 @@ export function login(username, password) {
  * @param {{ username: string, password: string, firstName?: string, lastName?: string, email: string }} userData
  * @returns {Promise<object>} user object
  */
-export function signup(userData) {
-  return fetch(`${API_BASE}/auth/signup`, {
+export async function signup(userData) {
+  const res = await fetch(`${API_BASE}/auth/signup`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(userData),
-  }).then(async (res) => {
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data.error || 'Signup failed');
-    }
-    setAuth(data.token, data.user);
-    return data.user;
   });
+  const data = await parseJsonResponse(res, 'Registration failed');
+  setAuth(data.token, data.user);
+  return data.user;
 }
 
 /**
  * Fetches the currently authenticated user profile from backend.
  * @returns {Promise<object>}
  */
-export function fetchMe() {
-  return apiFetch('/auth/me').then(async (res) => {
-    if (!res.ok) throw new Error('Failed to fetch user profile');
-    const user = await res.json();
-    sessionStorage.setItem('semsearch_user', JSON.stringify(user));
-    return user;
-  });
+export async function fetchMe() {
+  const res = await apiFetch('/auth/me');
+  const user = await parseJsonResponse(res, 'Failed to fetch user profile');
+  sessionStorage.setItem('semsearch_user', JSON.stringify(user));
+  return user;
 }
 
 /**
@@ -406,3 +427,109 @@ export async function validateCredentials(username, password) {
     return false;
   }
 }
+
+// ── Workspaces & Permissions API ──────────────────────────────────────────
+
+/**
+ * Lists workspace folders accessible to current user.
+ * @returns {Promise<Array>}
+ */
+export async function listWorkspaces() {
+  const res = await apiFetch('/workspaces');
+  return parseJsonResponse(res, 'Failed to fetch workspaces');
+}
+
+/**
+ * Creates a new workspace folder (PUBLIC or PRIVATE).
+ * @param {{ name: string, description?: string, visibility: 'PUBLIC' | 'PRIVATE' }} data
+ * @returns {Promise<Object>}
+ */
+export async function createWorkspace(data) {
+  const res = await apiFetch('/workspaces', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+  return parseJsonResponse(res, 'Failed to create workspace');
+}
+
+/**
+ * Gets details, permissions and activities of a workspace folder.
+ * @param {string} id
+ * @returns {Promise<Object>}
+ */
+export async function getWorkspaceDetail(id) {
+  const res = await apiFetch(`/workspaces/${id}`);
+  return parseJsonResponse(res, 'Failed to fetch workspace details');
+}
+
+/**
+ * Deletes a workspace folder (owner/admin only).
+ * @param {string} id
+ * @returns {Promise<Object>}
+ */
+export async function deleteWorkspace(id) {
+  const res = await apiFetch(`/workspaces/${id}`, {
+    method: 'DELETE',
+  });
+  return parseJsonResponse(res, 'Failed to delete workspace');
+}
+
+/**
+ * Requests write/collaborator access on a workspace folder.
+ * @param {string} folderId
+ * @param {{ reason?: string, requestedRole?: string }} data
+ * @returns {Promise<Object>}
+ */
+export async function requestWorkspaceAccess(folderId, data) {
+  const res = await apiFetch(`/workspaces/${folderId}/requests`, {
+    method: 'POST',
+    body: JSON.stringify(data || {}),
+  });
+  return parseJsonResponse(res, 'Failed to submit access request');
+}
+
+/**
+ * Fetches pending access requests for folders owned by the logged-in user.
+ * @returns {Promise<Array>}
+ */
+export async function getPendingAccessRequests() {
+  const res = await apiFetch('/workspaces/requests/pending');
+  return parseJsonResponse(res, 'Failed to fetch pending access requests');
+}
+
+/**
+ * Fetches access requests raised by the logged-in user.
+ * @returns {Promise<Array>}
+ */
+export async function getMyAccessRequests() {
+  const res = await apiFetch('/workspaces/requests/mine');
+  return parseJsonResponse(res, 'Failed to fetch my access requests');
+}
+
+/**
+ * Reviews an access request (APPROVE or DENY).
+ * @param {string} requestId
+ * @param {{ action: 'APPROVE' | 'DENY', reviewComment?: string }} data
+ * @returns {Promise<Object>}
+ */
+export async function reviewAccessRequest(requestId, data) {
+  const res = await apiFetch(`/workspaces/requests/${requestId}/review`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+  return parseJsonResponse(res, 'Failed to review access request');
+}
+
+/**
+ * Revokes a user's permissions on a workspace folder.
+ * @param {string} folderId
+ * @param {string} targetUser
+ * @returns {Promise<Object>}
+ */
+export async function revokeWorkspacePermission(folderId, targetUser) {
+  const res = await apiFetch(`/workspaces/${folderId}/permissions/${targetUser}`, {
+    method: 'DELETE',
+  });
+  return parseJsonResponse(res, 'Failed to revoke permission');
+}
+

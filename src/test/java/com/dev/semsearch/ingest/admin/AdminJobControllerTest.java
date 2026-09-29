@@ -17,7 +17,7 @@ import java.time.Instant;
 import java.util.List;
 
 import static org.mockito.Mockito.when;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.httpBasic;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -55,11 +55,11 @@ class AdminJobControllerTest {
     void testAdminEndpointsForbiddenForNonAdminUser() throws Exception {
         // "alice" has role USER, not ADMIN
         mockMvc.perform(get("/api/admin/jobs/failed")
-                        .with(httpBasic("alice", "alice")))
+                        .with(user("alice").roles("USER")))
                 .andExpect(status().isForbidden());
 
         mockMvc.perform(post("/api/admin/jobs/requeue")
-                        .with(httpBasic("alice", "alice")))
+                        .with(user("alice").roles("USER")))
                 .andExpect(status().isForbidden());
     }
 
@@ -72,7 +72,7 @@ class AdminJobControllerTest {
         when(jobRepository.findFailedJobs(50)).thenReturn(List.of(failedJob));
 
         mockMvc.perform(get("/api/admin/jobs/failed")
-                        .with(httpBasic("admin", "admin")))
+                        .with(user("admin").roles("ADMIN")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(1))
                 .andExpect(jsonPath("$[0].nodeId").value("node-fail"))
@@ -85,7 +85,7 @@ class AdminJobControllerTest {
         when(jobRepository.requeueFailedJobs()).thenReturn(3);
 
         mockMvc.perform(post("/api/admin/jobs/requeue")
-                        .with(httpBasic("admin", "admin")))
+                        .with(user("admin").roles("ADMIN")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("SUCCESS"))
                 .andExpect(jsonPath("$.requeuedCount").value(3));
@@ -96,7 +96,7 @@ class AdminJobControllerTest {
         when(contentService.reconcileContent()).thenReturn(5);
 
         mockMvc.perform(post("/api/admin/reconcile/content")
-                        .with(httpBasic("admin", "admin")))
+                        .with(user("admin").roles("ADMIN")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.task").value("CONTENT_RECONCILIATION"))
                 .andExpect(jsonPath("$.enqueuedCount").value(5));

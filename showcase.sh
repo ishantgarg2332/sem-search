@@ -17,7 +17,20 @@ read -p "Enter choice [1-4]: " CHOICE
 
 case $CHOICE in
   1)
-    echo "Starting Vite dev server if not already running..."
+    echo "Checking Spring Boot backend on port 8085..."
+    if ! curl -s -f http://localhost:8085/actuator/health > /dev/null; then
+        echo "⚠️  Spring Boot backend is not running on port 8085."
+        echo "   Starting Spring Boot in the background..."
+        (cd "$(dirname "$0")" && ./mvnw spring-boot:run) &
+        echo "   Waiting for backend to be ready..."
+        until curl -s -f http://localhost:8085/actuator/health > /dev/null; do
+            sleep 2
+        done
+        echo "✅ Backend is healthy and ready!"
+    else
+        echo "✅ Spring Boot backend is already active on port 8085."
+    fi
+    echo "Starting Vite dev server at http://localhost:5173..."
     cd "$(dirname "$0")/frontend"
     npm run dev
     ;;

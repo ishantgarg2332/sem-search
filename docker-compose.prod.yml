@@ -29,6 +29,9 @@ services:
       - ALFRESCO_PASSWORD=${ALFRESCO_ADMIN_PASSWORD:-admin}
       - OLLAMA_HOST=ollama
       - OLLAMA_PORT=11434
+      - SECURITY_JWT_SECRET=${JWT_SECRET:-4a7f29b8c1d5e3f7a902b4c6e8d1f3a579b2d4e6f8a0c2e4f6a8b0d2e4f6a8b0c2e4f6a8b0d2e4f6a8b0c2e4f6a8b0d2e4f6a8b0c2e4f6a8b0d2e4f6a8b0}
+      - SECURITY_JWT_EXPIRATION_HOURS=24
+      - SECURITY_SIGNUP_ENABLED=true
     depends_on:
       app-postgres:
         condition: service_healthy
@@ -85,22 +88,23 @@ services:
       - internal-net
 
   # ──────────────────────────────────────────────────────────
-  # Caddy (Optional Automated HTTPS Reverse Proxy)
-  # Uncomment and configure domain when deploying to public VPS
+  # Caddy (Automated HTTPS Reverse Proxy with Let's Encrypt)
   # ──────────────────────────────────────────────────────────
-  # caddy:
-  #   image: caddy:2-alpine
-  #   container_name: semsearch-caddy
-  #   restart: unless-stopped
-  #   ports:
-  #     - "80:80"
-  #     - "443:443"
-  #   volumes:
-  #     - ./Caddyfile:/etc/caddy/Caddyfile
-  #     - caddy_data:/data
-  #     - caddy_config:/config
-  #   networks:
-  #     - internal-net
+  caddy:
+    image: caddy:2-alpine
+    container_name: semsearch-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - DOMAIN=${DOMAIN:-localhost}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - internal-net
 
 volumes:
   app_postgres_data:

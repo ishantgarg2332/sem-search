@@ -6,6 +6,7 @@ import LoginForm from './components/LoginForm'
 import SearchPage from './pages/SearchPage'
 import DocumentsPage from './pages/DocumentsPage'
 import AdminPage from './pages/AdminPage'
+import WorkspacesPage from './pages/WorkspacesPage'
 
 export default function App() {
   const [authed, setAuthed] = useState(isAuthenticated())
@@ -36,6 +37,7 @@ export default function App() {
       <Layout onLogout={handleLogout}>
         <Routes>
           <Route path="/" element={<SearchPage />} />
+          <Route path="/workspaces" element={<WorkspacesPage />} />
           <Route path="/documents" element={<DocumentsPage />} />
           <Route path="/admin" element={<AdminPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />

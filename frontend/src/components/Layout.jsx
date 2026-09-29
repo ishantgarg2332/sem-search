@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import { Search, FolderOpen, Shield, LogOut, Sparkles } from 'lucide-react'
+import { Search, FolderOpen, FolderPlus, Shield, LogOut, Sparkles } from 'lucide-react'
 import { getAuthUser, getCredentials, clearAuth } from '../api/client'
 
 export default function Layout({ children, onLogout }) {
@@ -15,6 +15,7 @@ export default function Layout({ children, onLogout }) {
 
   const navItems = [
     { to: '/', icon: Search, label: 'Semantic Search' },
+    { to: '/workspaces', icon: FolderPlus, label: 'Workspaces' },
     { to: '/documents', icon: FolderOpen, label: 'Documents' },
     ...(isAdmin ? [{ to: '/admin', icon: Shield, label: 'Admin Dashboard' }] : []),
   ]
