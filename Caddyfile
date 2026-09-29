@@ -1,0 +1,7 @@
+# Caddy configuration for SemSearch
+# Replace with your actual domain or dynamic DNS (e.g. search.yourdomain.com)
+
+# {$DOMAIN:localhost} {
+#     encode gzip zstd
+#     reverse_proxy semantic-search:8085
+# }

@@ -1,0 +1,116 @@
+version: '3.8'
+
+services:
+  # ──────────────────────────────────────────────────────────
+  # SemSearch Spring Boot App + Embedded React Frontend
+  # ──────────────────────────────────────────────────────────
+  semantic-search:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: semsearch-app
+    restart: unless-stopped
+    ports:
+      - "8085:8085"
+    environment:
+      - PORT=8085
+      - DB_HOST=app-postgres
+      - DB_PORT=5432
+      - DB_NAME=semsearch
+      - DB_USERNAME=appuser
+      - DB_PASSWORD=${APP_DB_PASSWORD:-apppassword}
+      - ELASTICSEARCH_HOST=elasticsearch
+      - ELASTICSEARCH_PORT=9200
+      - ACTIVEMQ_HOST=activemq
+      - ACTIVEMQ_PORT=61616
+      - ALFRESCO_HOST=alfresco
+      - ALFRESCO_PORT=8080
+      - ALFRESCO_USERNAME=${ALFRESCO_ADMIN_USER:-admin}
+      - ALFRESCO_PASSWORD=${ALFRESCO_ADMIN_PASSWORD:-admin}
+      - OLLAMA_HOST=ollama
+      - OLLAMA_PORT=11434
+    depends_on:
+      app-postgres:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+    networks:
+      - internal-net
+      - alfresco-net
+
+  # ──────────────────────────────────────────────────────────
+  # App PostgreSQL (Job Queue & Content Hash State)
+  # ──────────────────────────────────────────────────────────
+  app-postgres:
+    image: postgres:16-alpine
+    container_name: semsearch-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: semsearch
+      POSTGRES_USER: appuser
+      POSTGRES_PASSWORD: ${APP_DB_PASSWORD:-apppassword}
+    volumes:
+      - app_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U appuser -d semsearch"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - internal-net
+
+  # ──────────────────────────────────────────────────────────
+  # Ollama Vector Embedding Engine
+  # ──────────────────────────────────────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    container_name: semsearch-ollama
+    restart: unless-stopped
+    volumes:
+      - ollama_models:/root/.ollama
+    networks:
+      - internal-net
+
+  # ──────────────────────────────────────────────────────────
+  # Automated Model Init (pulls nomic-embed-text on boot)
+  # ──────────────────────────────────────────────────────────
+  ollama-init:
+    image: curlimages/curl:latest
+    container_name: semsearch-ollama-init
+    depends_on:
+      - ollama
+    entrypoint: >
+      sh -c "sleep 5 && curl -s -X POST http://ollama:11434/api/pull -d '{\"name\": \"nomic-embed-text\"}' && echo 'Model pulled successfully'"
+    networks:
+      - internal-net
+
+  # ──────────────────────────────────────────────────────────
+  # Caddy (Optional Automated HTTPS Reverse Proxy)
+  # Uncomment and configure domain when deploying to public VPS
+  # ──────────────────────────────────────────────────────────
+  # caddy:
+  #   image: caddy:2-alpine
+  #   container_name: semsearch-caddy
+  #   restart: unless-stopped
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #   volumes:
+  #     - ./Caddyfile:/etc/caddy/Caddyfile
+  #     - caddy_data:/data
+  #     - caddy_config:/config
+  #   networks:
+  #     - internal-net
+
+volumes:
+  app_postgres_data:
+  ollama_models:
+  caddy_data:
+  caddy_config:
+
+networks:
+  internal-net:
+    driver: bridge
+  alfresco-net:
+    name: docker-compose_default
+    external: true

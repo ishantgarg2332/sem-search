@@ -1,0 +1,110 @@
+# =============================================================================
+# Alfresco Semantic Search — App Services
+# =============================================================================
+# Our services only: app-postgres and ollama.
+# Joins the Alfresco stack's network as an external network.
+#
+# Usage (start AFTER the Alfresco stack is healthy):
+#   docker compose -f docker-compose.app.yml up -d
+#   docker compose -f docker-compose.app.yml down
+#
+# Inter-service DNS (inside containers, use service names):
+#   activemq:61616   alfresco:8080   elasticsearch:9200
+#   app-postgres:5432   ollama:11434
+#
+# From the host (IDE / curl), use localhost:<published port>:
+#   localhost:5433 (app-postgres)   localhost:11434 (ollama)
+# =============================================================================
+
+services:
+
+  # ── App Postgres (job queue + node state) ────────────────────────────────────
+  # Published on 5433 to avoid clashing with Alfresco's postgres on 5432.
+  app-postgres:
+    image: postgres:16-alpine
+    container_name: app-postgres
+    environment:
+      POSTGRES_DB: semantic_search
+      POSTGRES_USER: appuser
+      POSTGRES_PASSWORD: apppassword   # change before any real deployment
+    ports:
+      - "5433:5432"   # 5432 is taken by Alfresco's postgres; use 5433 from the host
+    volumes:
+      - app-postgres-data:/var/lib/postgresql/data
+    # ── Memory limits ──────────────────────────────────────────────────────────
+    # Keeps Postgres within a small, predictable footprint so Ollama has
+    # enough room to load its model without triggering the OOM killer.
+    mem_limit: 512m
+    memswap_limit: 512m          # no swap for Postgres (swap == slow queries)
+    # ── Postgres memory tuning ─────────────────────────────────────────────────
+    command: >
+      postgres
+      -c shared_buffers=128MB
+      -c work_mem=4MB
+      -c maintenance_work_mem=64MB
+      -c effective_cache_size=256MB
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U appuser -d semantic_search"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - alfresco-net
+
+  # ── Ollama (embedding model server) ─────────────────────────────────────────
+  # Pulls nomic-embed-text automatically on first start (~274 MB).
+  # Task prefixes are required for quality:
+  #   index time  → "search_document: " + chunk text
+  #   query time  → "search_query: "    + query text
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama   # persists downloaded models across restarts
+    # ── Memory limits ──────────────────────────────────────────────────────────
+    # 6 GB hard cap for Ollama; 1 GB swap headroom for brief spikes during
+    # model loading. Total budget: 6.5 GB Ollama + 512 MB Postgres ≈ 7 GB,
+    # safely under Docker's 7.9 GB ceiling.
+    mem_limit: 6g
+    memswap_limit: 7g            # allows 1 GB of swap during model load spikes
+    # ── Model pull on first start ───────────────────────────────────────────────
+    # Pull the model *after* the server is up so the download doesn't race
+    # with container initialisation and spike RAM before limits are enforced.
+    entrypoint: >
+      /bin/sh -c "
+        ollama serve &
+        OLLAMA_PID=$$!;
+        echo 'Waiting for Ollama to be ready...';
+        until ollama list > /dev/null 2>&1; do sleep 2; done;
+        echo 'Pulling nomic-embed-text...';
+        ollama pull nomic-embed-text;
+        wait $$OLLAMA_PID
+      "
+    # GPU passthrough (uncomment if you have nvidia-container-toolkit):
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s          # increased: model pull takes time on first boot
+    networks:
+      - alfresco-net
+
+volumes:
+  app-postgres-data:
+  ollama-data:
+
+networks:
+  alfresco-net:
+    external: true
+    name: docker-compose_default   # exact name of the Alfresco stack's network
+                                   # verify with: docker network ls

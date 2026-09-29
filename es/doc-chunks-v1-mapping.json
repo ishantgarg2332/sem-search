@@ -1,0 +1,50 @@
+{
+  "settings": {
+    "number_of_shards": 1,
+    "number_of_replicas": 0
+  },
+  "mappings": {
+    "dynamic": "strict",
+    "properties": {
+      "node_id": {
+        "type": "keyword"
+      },
+      "version_label": {
+        "type": "keyword"
+      },
+      "chunk_index": {
+        "type": "integer"
+      },
+      "name": {
+        "type": "text",
+        "fields": {
+          "raw": {
+            "type": "keyword"
+          }
+        }
+      },
+      "path": {
+        "type": "keyword"
+      },
+      "mime_type": {
+        "type": "keyword"
+      },
+      "modified_at": {
+        "type": "date"
+      },
+      "readers": {
+        "type": "keyword"
+      },
+      "text": {
+        "type": "text",
+        "analyzer": "english"
+      },
+      "embedding": {
+        "type": "dense_vector",
+        "dims": 768,
+        "index": true,
+        "similarity": "cosine"
+      }
+    }
+  }
+}

@@ -1,0 +1,67 @@
+server:
+  port: ${PORT:8085}
+
+# File upload limits (matches ingest.pipeline.max-file-size-mb)
+spring.servlet.multipart:
+  max-file-size: 50MB
+  max-request-size: 50MB
+
+spring:
+  application:
+    name: semantic-search
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5433}/${DB_NAME:semantic_search}?currentSchema=ingest
+    username: ${DB_USERNAME:appuser}
+    password: ${DB_PASSWORD:apppassword}
+  flyway:
+    schemas: ingest
+    default-schema: ingest
+  elasticsearch:
+    uris: http://${ELASTICSEARCH_HOST:localhost}:${ELASTICSEARCH_PORT:9200}
+  activemq:
+    broker-url: tcp://${ACTIVEMQ_HOST:localhost}:${ACTIVEMQ_PORT:61616}
+    user: ${ACTIVEMQ_USER:admin}
+    password: ${ACTIVEMQ_PASSWORD:admin}
+    packages:
+      trust-all: true
+  jms:
+    cache:
+      enabled: false # Disable connection cache as required by Alfresco SDK
+  ai:
+    ollama:
+      base-url: http://${OLLAMA_HOST:localhost}:${OLLAMA_PORT:11434}
+      embedding:
+        model: nomic-embed-text
+  task:
+    scheduling:
+      pool:
+        size: 4
+
+alfresco:
+  base-url: http://${ALFRESCO_HOST:localhost}:${ALFRESCO_PORT:8080}
+  username: ${ALFRESCO_USERNAME:admin}
+  password: ${ALFRESCO_PASSWORD:admin}
+
+ingest:
+  worker:
+    poll-interval-ms: 2000
+    batch-size: 10
+    max-attempts: 5
+    lease-timeout: 15m
+  cleanup:
+    retention-days: 7
+  pipeline:
+    chunk-size: 400
+    chunk-overlap: 50
+    max-file-size-mb: 50
+    supported-mime-types:
+      - application/pdf
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
