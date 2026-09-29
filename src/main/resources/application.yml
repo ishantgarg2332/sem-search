@@ -37,6 +37,13 @@ spring:
       pool:
         size: 4
 
+security:
+  jwt:
+    secret: ${JWT_SECRET:semsearch-super-secret-jwt-signing-key-for-hs256-production-ready!}
+    expiration-hours: ${JWT_EXPIRATION_HOURS:24}
+  signup:
+    enabled: ${SIGNUP_ENABLED:true}
+
 alfresco:
   base-url: http://${ALFRESCO_HOST:localhost}:${ALFRESCO_PORT:8080}
   username: ${ALFRESCO_USERNAME:admin}

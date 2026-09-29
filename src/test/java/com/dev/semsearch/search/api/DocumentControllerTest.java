@@ -25,7 +25,7 @@ import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.httpBasic;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -69,7 +69,7 @@ class DocumentControllerTest {
 
     @Test
     void userOutsideTheGroupGets404AndNothingIsDownloaded() throws Exception {
-        mockMvc.perform(get("/api/documents/finance-doc/content").with(httpBasic("bob", "bob")))
+        mockMvc.perform(get("/api/documents/finance-doc/content").with(user("bob").roles("USER")))
                 .andExpect(status().isNotFound());
 
         verify(documentClient, never()).copyContentToStream(anyString(), any());
@@ -77,14 +77,14 @@ class DocumentControllerTest {
 
     @Test
     void groupMemberCanReadMetadata() throws Exception {
-        mockMvc.perform(get("/api/documents/finance-doc").with(httpBasic("alice", "alice")))
+        mockMvc.perform(get("/api/documents/finance-doc").with(user("alice").roles("USER")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value("finance-doc"));
     }
 
     @Test
     void consumerCannotDelete() throws Exception {
-        mockMvc.perform(delete("/api/documents/finance-doc").with(httpBasic("alice", "alice")))
+        mockMvc.perform(delete("/api/documents/finance-doc").with(user("alice").roles("USER")))
                 .andExpect(status().isForbidden());
 
         verify(documentClient, never()).deleteNode(anyString());
@@ -92,7 +92,7 @@ class DocumentControllerTest {
 
     @Test
     void userWhoCannotReadGets404OnDeleteToo() throws Exception {
-        mockMvc.perform(delete("/api/documents/finance-doc").with(httpBasic("bob", "bob")))
+        mockMvc.perform(delete("/api/documents/finance-doc").with(user("bob").roles("USER")))
                 .andExpect(status().isNotFound());
 
         verify(documentClient, never()).deleteNode(anyString());
@@ -100,7 +100,7 @@ class DocumentControllerTest {
 
     @Test
     void adminCanDelete() throws Exception {
-        mockMvc.perform(delete("/api/documents/finance-doc").with(httpBasic("admin", "admin")))
+        mockMvc.perform(delete("/api/documents/finance-doc").with(user("admin").roles("USER", "ADMIN")))
                 .andExpect(status().isOk());
 
         verify(documentClient).deleteNode("finance-doc");
@@ -116,7 +116,7 @@ class DocumentControllerTest {
         when(documentClient.listChildren("-root-", 0, 25)).thenReturn(new ListResponse(
                 List.of(financeDoc, publicDoc), new Pagination(2, false, 0, 25)));
 
-        mockMvc.perform(get("/api/documents").with(httpBasic("bob", "bob")))
+        mockMvc.perform(get("/api/documents").with(user("bob").roles("USER")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.entries.length()").value(1))
                 .andExpect(jsonPath("$.entries[0].id").value("public-doc"));

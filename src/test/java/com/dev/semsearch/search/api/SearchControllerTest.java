@@ -22,7 +22,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.httpBasic;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -59,7 +59,7 @@ class SearchControllerTest {
     @Test
     void testSearchWithEmptyQueryReturnsEmptyList() throws Exception {
         mockMvc.perform(get("/api/search")
-                        .with(httpBasic("admin", "admin"))
+                        .with(user("admin").roles("USER", "ADMIN"))
                         .param("q", "   "))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$").isArray())
@@ -95,7 +95,7 @@ class SearchControllerTest {
                 ));
 
         mockMvc.perform(get("/api/search")
-                        .with(httpBasic("alice", "alice"))
+                        .with(user("alice").roles("USER"))
                         .param("q", "repayment rules")
                         .param("limit", "5"))
                 .andExpect(status().isOk())

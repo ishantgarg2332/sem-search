@@ -1,17 +1,25 @@
 /**
  * API client for the Semantic Search backend.
- * Handles authentication (HTTP Basic) and all REST API calls.
- * The credentials are stored in sessionStorage.
+ * Handles JWT authentication and all REST API calls.
+ * The JWT token and current user profile are stored in sessionStorage.
  */
 
 const API_BASE = '/api';
 
 /**
- * Gets the stored auth credentials from sessionStorage.
- * @returns {{ username: string, password: string } | null}
+ * Gets the stored JWT token from sessionStorage.
+ * @returns {string | null}
  */
-export function getCredentials() {
-  const stored = sessionStorage.getItem('semsearch_auth');
+export function getToken() {
+  return sessionStorage.getItem('semsearch_jwt');
+}
+
+/**
+ * Gets the stored user profile from sessionStorage.
+ * @returns {{ username: string, firstName?: string, lastName?: string, email?: string, roles: string[], isAdmin: boolean } | null}
+ */
+export function getAuthUser() {
+  const stored = sessionStorage.getItem('semsearch_user');
   if (!stored) return null;
   try {
     return JSON.parse(stored);
@@ -21,37 +29,118 @@ export function getCredentials() {
 }
 
 /**
- * Saves auth credentials to sessionStorage.
- * @param {string} username
- * @param {string} password
+ * Stores JWT token and user profile in sessionStorage.
+ * @param {string} token
+ * @param {object} user
  */
-export function saveCredentials(username, password) {
-  sessionStorage.setItem('semsearch_auth', JSON.stringify({ username, password }));
+export function setAuth(token, user) {
+  if (token) sessionStorage.setItem('semsearch_jwt', token);
+  if (user) sessionStorage.setItem('semsearch_user', JSON.stringify(user));
 }
 
 /**
- * Clears stored auth credentials.
+ * Clears stored JWT token and user profile.
  */
-export function clearCredentials() {
+export function clearAuth() {
+  sessionStorage.removeItem('semsearch_jwt');
+  sessionStorage.removeItem('semsearch_user');
   sessionStorage.removeItem('semsearch_auth');
 }
 
 /**
- * Checks if the user is currently authenticated (has stored creds).
- * @returns {boolean}
+ * Backward compatibility alias for clearAuth.
  */
-export function isAuthenticated() {
-  return getCredentials() !== null;
+export function clearCredentials() {
+  clearAuth();
 }
 
 /**
- * Builds the Basic Auth header value.
+ * Backward compatibility helper returning username and admin status.
+ * @returns {{ username: string, isAdmin: boolean } | null}
+ */
+export function getCredentials() {
+  const user = getAuthUser();
+  if (!user) return null;
+  return { username: user.username, isAdmin: !!user.isAdmin };
+}
+
+/**
+ * Backward compatibility helper.
+ */
+export function saveCredentials(username) {
+  // Kept for backward compatibility
+}
+
+/**
+ * Checks if the user is currently authenticated (has stored JWT token).
+ * @returns {boolean}
+ */
+export function isAuthenticated() {
+  return !!getToken();
+}
+
+/**
+ * Logs in with username and password against Alfresco via backend.
+ * @param {string} username
+ * @param {string} password
+ * @returns {Promise<object>} user object
+ */
+export function login(username, password) {
+  return fetch(`${API_BASE}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }),
+  }).then(async (res) => {
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || 'Login failed');
+    }
+    setAuth(data.token, data.user);
+    return data.user;
+  });
+}
+
+/**
+ * Registers a new user account in Alfresco via backend.
+ * @param {{ username: string, password: string, firstName?: string, lastName?: string, email: string }} userData
+ * @returns {Promise<object>} user object
+ */
+export function signup(userData) {
+  return fetch(`${API_BASE}/auth/signup`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(userData),
+  }).then(async (res) => {
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || 'Signup failed');
+    }
+    setAuth(data.token, data.user);
+    return data.user;
+  });
+}
+
+/**
+ * Fetches the currently authenticated user profile from backend.
+ * @returns {Promise<object>}
+ */
+export function fetchMe() {
+  return apiFetch('/auth/me').then(async (res) => {
+    if (!res.ok) throw new Error('Failed to fetch user profile');
+    const user = await res.json();
+    sessionStorage.setItem('semsearch_user', JSON.stringify(user));
+    return user;
+  });
+}
+
+/**
+ * Builds the Authorization header value with JWT.
  * @returns {string}
  */
 function getAuthHeader() {
-  const creds = getCredentials();
-  if (!creds) throw new Error('Not authenticated');
-  return 'Basic ' + btoa(`${creds.username}:${creds.password}`);
+  const token = getToken();
+  if (!token) throw new Error('Not authenticated');
+  return `Bearer ${token}`;
 }
 
 /**
@@ -61,10 +150,14 @@ function getAuthHeader() {
  * @returns {Promise<Response>}
  */
 async function apiFetch(path, options = {}) {
+  const token = getToken();
   const headers = {
     ...options.headers,
-    'Authorization': getAuthHeader(),
   };
+
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
 
   // Don't set Content-Type for FormData (browser sets it with boundary)
   if (!(options.body instanceof FormData)) {
@@ -77,9 +170,9 @@ async function apiFetch(path, options = {}) {
   });
 
   if (response.status === 401) {
-    clearCredentials();
-    window.location.reload();
-    throw new Error('Authentication failed');
+    clearAuth();
+    window.dispatchEvent(new CustomEvent('auth:expired'));
+    throw new Error('Authentication expired or unauthorized');
   }
 
   return response;
@@ -300,19 +393,15 @@ export async function triggerPermissionReconciliation() {
 }
 
 /**
- * Validates credentials by making a test search request.
+ * Validates credentials by attempting to authenticate.
  * @param {string} username
  * @param {string} password
  * @returns {Promise<boolean>}
  */
 export async function validateCredentials(username, password) {
   try {
-    const headers = {
-      'Authorization': 'Basic ' + btoa(`${username}:${password}`),
-      'Content-Type': 'application/json',
-    };
-    const res = await fetch(`${API_BASE}/search?q=test&limit=1`, { headers });
-    return res.ok || res.status !== 401;
+    await login(username, password);
+    return true;
   } catch {
     return false;
   }

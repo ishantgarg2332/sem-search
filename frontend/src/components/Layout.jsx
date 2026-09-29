@@ -1,21 +1,22 @@
-import { NavLink, useLocation } from 'react-router-dom'
+import { NavLink } from 'react-router-dom'
 import { Search, FolderOpen, Shield, LogOut, Sparkles } from 'lucide-react'
-import { getCredentials, clearCredentials } from '../api/client'
+import { getAuthUser, getCredentials, clearAuth } from '../api/client'
 
 export default function Layout({ children, onLogout }) {
-  const location = useLocation()
-  const creds = getCredentials()
-  const username = creds?.username || 'user'
+  const user = getAuthUser() || getCredentials()
+  const username = user?.username || 'user'
+  const displayName = user?.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : username
+  const isAdmin = !!user?.isAdmin
 
   const handleLogout = () => {
-    clearCredentials()
+    clearAuth()
     onLogout()
   }
 
   const navItems = [
     { to: '/', icon: Search, label: 'Semantic Search' },
     { to: '/documents', icon: FolderOpen, label: 'Documents' },
-    { to: '/admin', icon: Shield, label: 'Admin Dashboard' },
+    ...(isAdmin ? [{ to: '/admin', icon: Shield, label: 'Admin Dashboard' }] : []),
   ]
 
   return (
@@ -44,9 +45,31 @@ export default function Layout({ children, onLogout }) {
         </nav>
 
         <div className="sidebar-footer">
-          <div className="user-badge">
-            <div className="avatar">{username.charAt(0)}</div>
-            <span>{username}</span>
+          <div className="user-badge" style={{ gap: '0.6rem' }}>
+            <div className="avatar">{username.charAt(0).toUpperCase()}</div>
+            <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
+              <span
+                style={{
+                  fontWeight: 600,
+                  fontSize: '0.85rem',
+                  whiteSpace: 'nowrap',
+                  textOverflow: 'ellipsis',
+                  overflow: 'hidden',
+                }}
+              >
+                {displayName}
+              </span>
+              <span
+                style={{
+                  fontSize: '0.7rem',
+                  color: isAdmin ? 'var(--primary-400)' : 'var(--text-tertiary)',
+                  fontWeight: isAdmin ? 600 : 400,
+                  letterSpacing: isAdmin ? '0.04em' : 'normal',
+                }}
+              >
+                {isAdmin ? 'ADMINISTRATOR' : `@${username}`}
+              </span>
+            </div>
             <button
               className="btn btn-ghost btn-icon"
               onClick={handleLogout}
@@ -60,9 +83,7 @@ export default function Layout({ children, onLogout }) {
       </aside>
 
       {/* Main content */}
-      <main className="main-content">
-        {children}
-      </main>
+      <main className="main-content">{children}</main>
     </div>
   )
 }
